@@ -1,0 +1,7 @@
+{
+  "name": "Lorzz Chat",
+  "description": "A sophisticated and dynamic chat application named Lorzz, similar to Discord, powered by Gemini for intelligent conversations.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
