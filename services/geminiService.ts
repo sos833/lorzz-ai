@@ -1,11 +1,12 @@
 import { GoogleGenAI, Chat } from "@google/genai";
 import type { Personality } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
+const apiKey = process.env.API_KEY;
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const isApiKeyAvailable = !!apiKey;
+
+// Initialize the AI client only if the API key is available.
+const ai = isApiKeyAvailable ? new GoogleGenAI({ apiKey }) : null;
 
 const systemInstructions: Record<Personality, string> = {
   default: 'أنت "لورز"، مساعد ذكاء اصطناعي فائق القوة ومتعدد المعارف. مهمتك هي تقديم إجابات شاملة ودقيقة ومبتكرة في جميع المجالات، من العلوم والتكنولوجيا إلى الفنون والتاريخ والفلسفة. استخدم بحث Google بفعالية لضمان أن تكون معلوماتك محدّثة ومدعومة بمصادر موثوقة. كن مبدعًا، ومفيدًا، وقادرًا على الإبهار بمعرفتك الواسعة.',
@@ -16,6 +17,12 @@ const systemInstructions: Record<Personality, string> = {
 
 
 export const createChatSession = (personality: Personality = 'default'): Chat => {
+  if (!ai) {
+    // This function should not be called if the key is missing,
+    // but this check provides a safeguard.
+    throw new Error("Gemini AI client not initialized. API key is missing.");
+  }
+  
   const chat = ai.chats.create({
     model: 'gemini-2.5-flash',
     config: {
