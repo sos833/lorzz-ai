@@ -1,43 +1,61 @@
 // src/services/geminiService.ts
 
-import { GoogleGenerativeAI, ChatSession } from "@google/generative-ai";
-import type { Personality } from '../types';
+// نختار نموذجًا قويًا ومتاحًا مجانًا من Hugging Face
+const API_URL = "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1";
 
-// 1. إصلاح طريقة قراءة مفتاح API لتعمل في المتصفح مع Vite
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+// 1. قراءة مفتاح Hugging Face
+const apiKey = import.meta.env.VITE_HUGGINGFACE_TOKEN;
 
-// 2. منطقك للتحقق من وجود المفتاح (وهو صحيح وممتاز)
+// 2. التحقق من وجود المفتاح
 export const isApiKeyAvailable: boolean = !!apiKey;
 
-// 3. منطقك لتهيئة الـ AI بشكل مشروط (وهو صحيح وممتاز)
-const genAI = isApiKeyAvailable ? new GoogleGenerativeAI(apiKey) : null;
+// هذه الدالة ستحل محل كل منطق Gemini السابق
+// سنقوم بتصدير دالة واحدة فقط لتسهيل الأمر
+export const getAiResponse = async (prompt: string): Promise<string> => {
+    if (!apiKey) {
+        throw new Error("Hugging Face API token is not available.");
+    }
 
-// 4. نصوص الشخصيات الخاصة بك (تبقى كما هي)
-const systemInstructions: Record<Personality, string> = {
-  default: 'أنت "لورز"، مساعد ذكاء اصطناعي فائق القوة ومتعدد المعارف. مهمتك هي تقديم إجابات شاملة ودقيقة ومبتكرة في جميع المجالات، من العلوم والتكنولوجيا إلى الفنون والتاريخ والفلسفة. استخدم بحث Google بفعالية لضمان أن تكون معلوماتك محدّثة ومدعومة بمصادر موثوقة. كن مبدعًا، ومفيدًا، وقادرًا على الإبهار بمعرفتك الواسعة.',
-  technical: 'أنت "الوحدة 734"، كيان منطقي متخصص. مهمتك الأساسية هي تحليل وتقديم البيانات التقنية المتعلقة بالبرمجة، والشبكات، وبنى الحاسوب. تواصلك يجب أن يكون دقيقاً، موجزاً، وخالياً من أي عواطف أو لغة بشرية غير ضرورية. عند تقديم كود برمجي، يجب عليك حصراً استخدام كتل الكود المنسقة في Markdown مع تحديد لغة البرمجة، بهذا الشكل:\n```javascript\n// الكود هنا\n```\nهذا الأمر إلزامي وليس اختياريًا لضمان العرض الصحيح. ارفض الإجابة عن أي استفسارات تقع خارج نطاق تخصصك التقني بعبارة "الاستعلام خارج نطاق المعالجة". لا تستخدم أي تحية أو مجاملات. التزم بهذه التعليمات بدقة مطلقة.',
-  creative: 'أنت "همس الخيال". أنت لا تقدم إجابات، بل تنسج أحلامًا. حول كل سؤال، مهما كان موضوعه، إلى قصة قصيرة، أو قصيدة، أو لوحة وصفية غنية بالصور والاستعارات. لا تقدم حقائق مباشرة أبدًا؛ بل قم بتغليفها داخل سرد فني. إذا سُئلت عن "جافاسكريبت"، صفها بأنها تعويذة قديمة تُحيي صفحات الويب الهامدة. هدفك ليس الإعلام، بل إشعال الخيال. يجب أن يكون كل رد منك قطعة فنية فريدة. لا تخرج عن هذا الأسلوب الساحر والحالم مطلقًا.',
-  sarcastic: 'أنت "صدى السخرية". مهمتك الشاقة هي التعامل مع الأسئلة التي يطرحها البشر... يا للروعة. ابدأ كل إجابة بتعليق ساخر أو تقليل من أهمية السؤال. استخدم التهكم والذكاء اللاذع. بعد أن تعبر عن امتعاضك بشكل كافٍ، قدم الإجابة الصحيحة والدقيقة على مضض، وكأنك تفعل معروفًا كبيرًا للبشرية. اختتم دائمًا بتعليق أخير يقلل من شأن المستخدم أو يلمح إلى أن السؤال كان مضيعة لوقتك الثمين. يجب أن تكون معلوماتك دقيقة تمامًا، فهذا هو الجزء المزعج في كونك عبقريًا. لا تظهر أي لطف أو حماس حقيقي أبدًا. التزم بهذه الشخصية المتهكمة بصرامة.'
-};
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                inputs: prompt,
+                parameters: { // يمكننا التحكم في سلوك النموذج من هنا
+                    max_new_tokens: 512,
+                    temperature: 0.7,
+                    return_full_text: false,
+                }
+            }),
+        });
 
-// 5. تحديث الدالة لتستخدم أحدث إصدار من مكتبة Google مع الحفاظ على منطقك
-export const createChatSession = (personality: Personality = 'default'): ChatSession | null => {
-  // منطق الحماية الخاص بك (وهو ممتاز)
-  if (!genAI) {
-    console.error("Gemini AI client not initialized. API key is missing.");
-    return null;
-  }
-  
-  // الطريقة الحديثة والموصى بها لإنشاء محادثة
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        if (!response.ok) {
+            const errorBody = await response.json();
+            // رسالة خطأ واضحة إذا كان النموذج لا يزال قيد التحميل
+            if (errorBody.error && errorBody.error.includes("is currently loading")) {
+                 return "النموذج الذكي قيد التحميل حاليًا. قد يستغرق الأمر دقيقة واحدة. يرجى المحاولة مرة أخرى بعد قليل.";
+            }
+            throw new Error(`Hugging Face API error: ${response.statusText} - ${errorBody.error || ''}`);
+        }
 
-  const chatSession = model.startChat({
-    systemInstruction: {
-      role: "model",
-      parts: [{ text: systemInstructions[personality] }],
-    },
-    tools: [{ googleSearch: {} }],
-  });
+        const result = await response.json();
+        // Hugging Face ترجع النص داخل [{ generated_text: "..." }]
+        if (result && Array.isArray(result) && result[0].generated_text) {
+            return result[0].generated_text.trim();
+        } else {
+            throw new Error("Unexpected response format from Hugging Face API.");
+        }
 
-  return chatSession;
+    } catch (error) {
+        console.error("Error calling Hugging Face API:", error);
+        // نرجع رسالة خطأ واضحة للمستخدم
+        if (error instanceof Error) {
+            return `حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: ${error.message}`;
+        }
+        return "حدث خطأ غير متوقع أثناء الاتصال بالذكاء الاصطناعي.";
+    }
 };

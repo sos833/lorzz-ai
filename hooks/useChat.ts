@@ -1,47 +1,26 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-// 1. تحديث النوع (Type) ليكون أكثر دقة
-import { ChatSession } from '@google/generative-ai'; 
-import { createChatSession } from '../services/geminiService';
-import type { ChatMessage, Source, Personality } from '../types';
+import { useState, useEffect, useCallback } from 'react';
+// 1. استيراد دالتنا الجديدة والبسيطة من الخدمة
+import { getAiResponse } from '../services/geminiService'; 
+// ملاحظة: اسم الملف لم نغيره لتجنب الارتباك، لكنه الآن يتصل بـ Hugging Face
+import type { ChatMessage, Personality } from '../types';
 
-// Helper to convert File to a GoogleGenerativeAI.Part object. (لا تغيير هنا)
-const fileToGenerativePart = async (file: File) => {
-  const base64EncodedDataPromise = new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-    reader.readAsDataURL(file);
-  });
-  return {
-    inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
-  };
-};
+// لم نعد بحاجة لدالة fileToGenerativePart لأن النموذج الحالي نصي فقط.
+// لم نعد بحاجة لنوع Source.
 
-// دالة معالجة الأخطاء (لا تغيير هنا، عملها ممتاز)
+// دالة معالجة الأخطاء لا تزال مفيدة
 const getErrorMessage = (error: unknown): string => {
-    // ... (الكود الخاص بك كما هو)
     console.error("Error during API call:", error);
-
     if (error instanceof Error) {
-        if (error.name === 'TypeError' && error.message.toLowerCase().includes('fetch')) {
-            return "فشل الاتصال بالشبكة. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.";
+        if (error.message.includes("is currently loading")) {
+            return "النموذج الذكي قيد التحميل حاليًا. يرجى المحاولة مرة أخرى بعد لحظات.";
         }
-        const errorMessage = error.message || '';
-        if (errorMessage.includes('400')) {
-             return "حدث خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى.";
-        }
-        if (errorMessage.includes('429')) {
-             return "لقد أرسلت طلبات كثيرة جدًا. يرجى الانتظار قليلاً ثم المحاولة مرة أخرى.";
-        }
-        if (errorMessage.includes('500') || errorMessage.includes('503')) {
-             return "الخدمة غير متاحة حاليًا أو تواجه ضغطًا. يرجى المحاولة مرة أخرى لاحقاً.";
-        }
+        return `حدث خطأ: ${error.message}`;
     }
     return "عذراً، حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى.";
 };
 
 // دالة إنشاء رسالة الترحيب (لا تغيير هنا)
 const createWelcomeMessage = (username: string, personality: Personality): ChatMessage => {
-    // ... (الكود الخاص بك كما هو)
     let welcomeText: string;
     switch(personality) {
         case 'technical': welcomeText = `النظام متصل. أنا لورز، الخبير التقني. اطرح استفسارك يا ${username}.`; break;
@@ -55,23 +34,12 @@ const createWelcomeMessage = (username: string, personality: Personality): ChatM
 export const useChat = (username: string, personality: Personality) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  // 2. تحديث النوع هنا أيضًا
-  const chatRef = useRef<ChatSession | null>(null); 
+  // لم نعد بحاجة لـ chatRef لأننا لا نستخدم جلسات
   const storageKey = `chatHistory-${username}-${personality}`;
 
-  // Effect for initializing chat (لا تغيير هنا)
+  // Effect لتهيئة الرسائل من الذاكرة المحلية
   useEffect(() => {
-    const session = createChatSession(personality);
-    if (!session) {
-      setMessages([{
-        id: 'error-no-session',
-        text: 'فشل تهيئة جلسة الدردشة. هذا يحدث عادةً بسبب عدم وجود مفتاح API صالح.',
-        sender: 'System',
-        timestamp: new Date()
-      }]);
-      return;
-    }
-    chatRef.current = session;
+    // تم تبسيط هذا الجزء لإزالة منطق إنشاء الجلسة
     const savedMessagesRaw = localStorage.getItem(storageKey);
     if (savedMessagesRaw) {
         try {
@@ -89,82 +57,65 @@ export const useChat = (username: string, personality: Personality) => {
     }
   }, [username, personality, storageKey]);
 
-  // Effect for saving messages (لا تغيير هنا)
+  // Effect لحفظ الرسائل (لا تغيير هنا)
   useEffect(() => {
-    if (messages.length > 1 || (messages.length === 1 && !messages[0].id.startsWith('welcome') && !messages[0].id.startsWith('error'))) {
-      const messagesToSave = messages.map(msg => {
-        const { file, ...restOfMsg } = msg;
-        return restOfMsg;
-      });
-      localStorage.setItem(storageKey, JSON.stringify(messagesToSave));
+    if (messages.length > 1) {
+      localStorage.setItem(storageKey, JSON.stringify(messages));
     }
   }, [messages, storageKey]);
 
-
+  // 2. ✨ التعديل الأهم: تبسيط دالة sendMessage بالكامل ✨
   const sendMessage = useCallback(async (text: string, file: File | null = null) => {
-    if ((!text.trim() && !file) || isLoading || !chatRef.current) return;
+    if (!text.trim() || isLoading) return;
+
+    // النموذج الحالي لا يدعم الملفات، لذلك سننبه المستخدم
+    if (file) {
+      alert("عذرًا، إرسال الملفات غير مدعوم حاليًا. سيتم تجاهل الملف المرفق.");
+    }
+
     setIsLoading(true);
 
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`, text, sender: username, timestamp: new Date(),
+      id: `user-${Date.now()}`,
+      text,
+      sender: username,
+      timestamp: new Date(),
     };
-    if (file) {
-      userMessage.file = { url: URL.createObjectURL(file), name: file.name, type: file.type };
-    }
+    
     setMessages(prev => [...prev, userMessage]);
     
-    const aiMessageId = `ai-${Date.now()}`;
-    const aiPlaceholderMessage: ChatMessage = {
-        id: aiMessageId, text: '', sender: 'Lorzz AI', timestamp: new Date(), isStreaming: true,
-    };
-    setMessages(prev => [...prev, aiPlaceholderMessage]);
+    // لم نعد بحاجة للرسالة المؤقتة أو البث المباشر
 
     try {
-      const parts: (string | { inlineData: { data: string; mimeType: string; } })[] = [];
-      if (file) {
-        const imagePart = await fileToGenerativePart(file);
-        parts.push(imagePart);
-      }
-      // أضف النص دائمًا
-      parts.push(text);
+      // بناء prompt بسيط يتضمن الشخصية (هذا يحسن من جودة الرد)
+      const fullPrompt = `Personality: ${personality}. User query: ${text}`;
       
-      // 3. ✨ الإصلاح الرئيسي هنا ✨
-      const stream = await chatRef.current.sendMessageStream(parts);
+      // استدعاء دالتنا الجديدة البسيطة والمباشرة
+      const aiResponseText = await getAiResponse(fullPrompt);
 
-      let accumulatedText = '';
-      const groundingChunks = new Map<string, Source>();
-
-      for await (const chunk of stream.stream) { // لاحظ .stream الإضافية
-        const chunkText = chunk.text(); // استخدم دالة text()
-        if (chunkText) {
-          accumulatedText += chunkText;
-        }
-
-        chunk.candidates?.[0]?.groundingAttributions?.forEach(att => {
-            if (att.web && att.web.uri) {
-                groundingChunks.set(att.web.uri, { uri: att.web.uri, title: att.web.title || att.web.uri });
-            }
-        });
-        setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId ? { ...msg, text: accumulatedText } : msg
-        ));
-      }
+      const aiMessage: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        text: aiResponseText,
+        sender: 'Lorzz AI',
+        timestamp: new Date(),
+      };
       
-      const sources = Array.from(groundingChunks.values());
-      setMessages(prev => prev.map(msg => 
-        msg.id === aiMessageId ? { ...msg, isStreaming: false, sources: sources.length > 0 ? sources : undefined } : msg
-      ));
+      // إضافة رسالة الذكاء الاصطناعي الكاملة مرة واحدة
+      setMessages(prev => [...prev, aiMessage]);
 
     } catch (error) {
       const userFriendlyMessage = getErrorMessage(error);
       const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`, text: userFriendlyMessage, sender: 'Lorzz AI', timestamp: new Date(),
+        id: `error-${Date.now()}`,
+        text: userFriendlyMessage,
+        sender: 'Lorzz AI',
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev.filter(m => m.id !== aiMessageId), errorMessage]);
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, username, storageKey]);
+  }, [isLoading, username, personality, storageKey]);
 
   return { messages, sendMessage, isLoading };
 };
