@@ -82,8 +82,18 @@ export const useChat = (username: string, personality: Personality) => {
 
   // Effect for initializing chat and loading/creating messages
   useEffect(() => {
-    // Create a new chat session whenever the personality changes.
-    chatRef.current = createChatSession(personality);
+    const session = createChatSession(personality);
+    if (!session) {
+      setMessages([{
+        id: 'error-no-session',
+        text: 'فشل تهيئة جلسة الدردشة. هذا يحدث عادةً بسبب عدم وجود مفتاح API صالح.',
+        sender: 'Lorzz AI',
+        timestamp: new Date()
+      }]);
+      return;
+    }
+    
+    chatRef.current = session;
     
     const savedMessagesRaw = localStorage.getItem(storageKey);
 
@@ -97,22 +107,17 @@ export const useChat = (username: string, personality: Personality) => {
         } catch (e) {
             console.error("Failed to parse chat history, starting fresh.", e);
             localStorage.removeItem(storageKey); // Clear corrupted data
-            // If history is corrupt, start a new chat with a welcome message.
             setMessages([createWelcomeMessage(username, personality)]);
         }
     } else {
-        // If no history is found (e.g., after a personality change),
-        // start a new chat with the personality-specific welcome message.
         setMessages([createWelcomeMessage(username, personality)]);
     }
   }, [username, personality, storageKey]);
 
   // Effect for saving messages to localStorage
   useEffect(() => {
-    // Don't save if it's just the initial welcome message
-    if (messages.length > 1 || (messages.length === 1 && messages[0].id !== 'welcome-message')) {
+    if (messages.length > 1 || (messages.length === 1 && !messages[0].id.startsWith('welcome') && !messages[0].id.startsWith('error'))) {
       const messagesToSave = messages.map(msg => {
-        // Exclude the 'file' property as its URL is temporary and cannot be persisted.
         const { file, ...restOfMsg } = msg;
         return restOfMsg;
       });
@@ -195,7 +200,7 @@ export const useChat = (username: string, personality: Personality) => {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, username, storageKey]); // Added storageKey dependency to sendMessage
+  }, [isLoading, username, storageKey]);
 
   return { messages, sendMessage, isLoading };
 };
