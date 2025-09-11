@@ -1,7 +1,8 @@
 // src/services/geminiService.ts
 
 // نختار نموذجًا قويًا ومتاحًا مجانًا من Hugging Face
-const API_URL = "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1";
+const API_URL = "https://api-inference.huggingface.co/models/microsoft/DialoGPT-large";
+
 
 // 1. قراءة مفتاح Hugging Face
 const apiKey = import.meta.env.VITE_HUGGINGFACE_TOKEN;
